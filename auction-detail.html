@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bidcoin</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="bid-module.js"></script>
+</head>
+<body>
+    <header>
+        <div class="logo">Bidcoin</div>
+        <p class="tagline">Pvp Auctions</p>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="auction-listing.html">Auctions</a></li>
+                <li><a href="howitworks.html">How It Works</a></li>
+                <li><a href="#">About</a></li>
+                <li><a href="dashboard.html">Dashboard</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="auction-page">
+        <div class="auction-left">
+            <section class="auction-item">
+                <h1 id="auctionName">Loading...</h1>
+                <img id="auctionImage" src="" alt="Auction Item">
+                <div class="auction-timer">
+                    <h2>Time Remaining</h2>
+                    <div id="countdown" class="countdown">00:00:00</div>
+                </div>
+            </section>
+
+            <section class="bid-info">
+                <p class="current-bid">Current Bid: <span id="current-bid-amount">Loading...</span></p>
+                <div class="no-new-bidders">No new bidders after <span id="max-bid">Loading...</span></div>
+                
+                <div class="auction-actions">
+                    <button id="place-bid-btn" class="btn bid">Place Bid</button>
+                    <button id="track-auction-btn" class="btn track-auction">Track Auction</button>
+                </div>
+
+                <div class="highest-bidder">
+                    <h2>Highest Bidder</h2>
+                    <p id="highest-bidder-name">Loading...</p>
+                </div>
+                <div class="bid-list">
+                    <h2>Recent Bids</h2>
+                    <ul id="recent-bids">
+                        <li>Loading recent bids...</li>
+                    </ul>
+                </div>
+            </section>
+        </div>
+        <div class="auction-right">
+            <section class="auction-rules collapsible-section">
+                <h2 class="collapsible-header">Auction Rules <span class="toggle-icon">+</span></h2>
+                <div class="collapsible-content">
+                    <h3>No Jumper Bidding</h3>
+                    <p>Bidding is locked for new participants once the current price reaches 5-10% of the item's fair value. This prevents late entries from disrupting the dynamics established by early bidders.</p>
+                    <h3>Newbies-Only Auction</h3>
+                    <p>Bidding is limited to users who have participated in 25 or fewer auctions. Once a user has participated in more than 25 auctions, they will no longer be eligible for these specific auctions.</p>
+                </div>
+            </section>
+
+            <section class="faqs collapsible-section">
+                <h2 class="collapsible-header">FAQs <span class="toggle-icon">+</span></h2>
+                <div class="collapsible-content">
+                    <h3>How to Bid</h3>
+                    <p>Connect your wallet, acquire bids, find an auction, place bids manually or use auto-bid. Bids are stacked in sequence.</p>
+                    <h3>How to Track Auction Progress</h3>
+                    <p>Use the "Track Auction" button to add the auction to your dashboard for live updates on bids and auction status.</p>
+                    <h3>Payment Options</h3>
+                    <p>Pay with Bidcoin or other supported cryptocurrencies directly from your connected wallet.</p>
+                    <h3>Can I Cancel a Winning Bid?</h3>
+                    <p>Once confirmed, winning bids are final and cancellations are not allowed.</p>
+                    <h3>I Won, Now What?</h3>
+                    <p>Arrange for pickup or delivery. Digital items may be transferred directly to your wallet.</p>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <!-- Footer content -->
+    </footer>
+
+    <!-- Bid Modal -->
+    <div id="bidModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Place a Bid</h2>
+            <p>Auction: <span id="bidModalAuctionName"></span></p>
+            <p>Current Price: <span id="bidModalCurrentPrice"></span></p>
+            <input type="number" id="bidAmount" min="0" step="0.01" placeholder="Enter your bid">
+            <button id="placeBidBtn">Place Bid</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script src="main.js"></script>
+    <script src="auction-tracking.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const auctionId = urlParams.get('id');
+        
+        if (auctionId) {
+            fetchAuctionDetails(auctionId).then(updateAuctionDetailPage);
+        } else {
+            console.error('No auction ID provided');
+        }
+
+        const bidButton = document.getElementById('place-bid-btn');
+        if (bidButton) {
+            bidButton.addEventListener('click', function() {
+                const currentPrice = document.getElementById('current-bid-amount').textContent;
+                const auctionName = document.getElementById('auctionName').textContent;
+                BidModule.showBidModal(auctionId, currentPrice, auctionName);
+            });
+        }
+
+        const closeButton = document.querySelector('.modal .close');
+        if (closeButton) {
+            closeButton.addEventListener('click', function() {
+                BidModule.closeBidModal();
+            });
+        }
+
+        const placeBidBtn = document.getElementById('placeBidBtn');
+        if (placeBidBtn) {
+            placeBidBtn.addEventListener('click', function() {
+                BidModule.placeBid(auctionId);
+            });
+        }
+
+        const trackButton = document.getElementById('track-auction-btn');
+        if (trackButton) {
+            trackButton.addEventListener('click', function() {
+                toggleTrackedAuction(auctionId);
+            });
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            if (event.target == document.getElementById('bidModal')) {
+                BidModule.closeBidModal();
+            }
+        }
+
+        // Start updating auction data
+        updateAuctionData();
+    });
+
+    async function fetchAuctionDetails(auctionId) {
+        const auction = await auctionContract.methods.auctions(auctionId).call();
+        return {
+            owner: auction.owner,
+            highestBid: web3.utils.fromWei(auction.highestBid, 'ether'),
+            highestBidder: auction.highestBidder,
+            isActive: auction.isActive
+        };
+    }
+
+    async function updateAuctionDetailPage(auctionId) {
+        const auction = await fetchAuctionDetails(auctionId);
+        document.getElementById('highest-bidder-name').textContent = auction.highestBidder;
+        document.getElementById('current-bid-amount').textContent = `${auction.highestBid} ETH`;
+        document.getElementById('auctionName').textContent = `Auction ${auctionId}`;
+    }
+
+    function updateTrackButton(auctionId) {
+        const trackButton = document.getElementById('track-auction-btn');
+        const trackedAuctions = JSON.parse(localStorage.getItem('trackedAuctions') || '[]');
+        const isTracked = trackedAuctions.some(auction => auction.id === auctionId);
+        
+        trackButton.textContent = isTracked ? 'Untrack Auction' : 'Track Auction';
+        trackButton.classList.toggle('tracked', isTracked);
+    }
+
+    function toggleTrackedAuction(auctionId) {
+        let trackedAuctions = JSON.parse(localStorage.getItem('trackedAuctions') || '[]');
+        const index = trackedAuctions.findIndex(auction => auction.id === auctionId);
+        const auctionName = document.getElementById('auctionName').textContent;
+        
+        if (index === -1) {
+            trackedAuctions.push({
+                id: auctionId,
+                name: auctionName,
+                currentPrice: document.getElementById('current-bid-amount').textContent,
+                image: document.getElementById('auctionImage').src,
+                timeLeft: document.getElementById('countdown').textContent,
+                leader: document.getElementById('highest-bidder-name').textContent
+            });
+            showConfirmation(`Auction "${auctionName}" has been tracked.`);
+        } else {
+            trackedAuctions.splice(index, 1);
+            showConfirmation(`Auction "${auctionName}" has been untracked.`);
+        }
+        
+        localStorage.setItem('trackedAuctions', JSON.stringify(trackedAuctions));
+        updateTrackButton(auctionId);
+    }
+
+    function showConfirmation(message) {
+        const confirmationElement = document.createElement('div');
+        confirmationElement.className = 'confirmation-message';
+        confirmationElement.textContent = message;
+        document.body.appendChild(confirmationElement);
+        setTimeout(() => {
+            confirmationElement.remove();
+        }, 3000);
+    }
+
+    function updateAuctionData() {
+        // Simulating real-time updates
+        setInterval(() => {
+            const countdownElement = document.getElementById('countdown');
+            let [hours, minutes, seconds] = countdownElement.textContent.split(':').map(Number);
+            
+            if (seconds > 0) {
+                seconds--;
+            } else if (minutes > 0) {
+                minutes--;
+                seconds = 59;
+            } else if (hours > 0) {
+                hours--;
+                minutes = 59;
+                seconds = 59;
+            }
+            
+            countdownElement.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            // Simulate price changes
+            const priceElement = document.getElementById('current-bid-amount');
+            const currentPrice = parseFloat(priceElement.textContent);
+            const newPrice = (currentPrice + Math.random() * 0.001).toFixed(3);
+            priceElement.textContent = `${newPrice} ETH`;
+            
+            // Simulate leader changes
+            if (Math.random() < 0.05) {
+                const leaderElement = document.getElementById('highest-bidder-name');
+                const leaders = ['SatoshiNakamoto', 'VitalikButerin', 'CryptoKing', 'BlockchainQueen'];
+                leaderElement.textContent = leaders[Math.floor(Math.random() * leaders.length)];
+            }
+        }, 1000);
+    }
+
+    async function placeBid(auctionId, bidAmount) {
+        const accounts = await web3.eth.getAccounts();
+        const userAddress = accounts[0];
+
+        await auctionContract.methods.placeBid(auctionId).send({
+            from: userAddress,
+            value: web3.utils.toWei(bidAmount, 'ether')
+        });
+    }
+
+    document.getElementById('place-bid-btn').addEventListener('click', function() {
+        const bidAmount = document.getElementById('bidAmount').value;
+        placeBid(auctionId, bidAmount);  // Call the smart contract function
+    });
+
+    async function finalizeAuction(auctionId) {
+        const accounts = await web3.eth.getAccounts();
+        const userAddress = accounts[0];
+
+        await auctionContract.methods.finalizeAuction(auctionId).send({
+            from: userAddress
+        });
+    }
+
+    document.getElementById('finalize-auction-btn').addEventListener('click', function() {
+        finalizeAuction(auctionId);  // Call the smart contract function
+    });
+    </script>
+</body>
+</html>
